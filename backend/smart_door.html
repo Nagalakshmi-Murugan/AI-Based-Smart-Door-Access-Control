@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SmartDoor AI — Lab Access Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --panel: #111318;
+    --border: #1e2330;
+    --accent: #00e5a0;
+    --accent2: #0066ff;
+    --danger: #ff3b5c;
+    --warn: #ffb800;
+    --text: #e8eaf2;
+    --muted: #5a6070;
+    --card: #14171f;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; overflow-x: hidden; }
+  body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 220px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 100; padding: 28px 0 20px; }
+  .logo { padding: 0 24px 32px; border-bottom: 1px solid var(--border); }
+  .logo-icon { width: 36px; height: 36px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; font-size: 18px; }
+  .logo h1 { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 800; letter-spacing: 0.05em; color: var(--text); }
+  .logo span { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .nav { flex: 1; padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 500; color: var(--muted); transition: all 0.2s; border: 1px solid transparent; text-transform: uppercase; letter-spacing: 0.08em; }
+  .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav-item.active { color: var(--accent); background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.15); }
+  .nav-item .icon { font-size: 15px; width: 18px; text-align: center; }
+  .system-status { margin: 0 12px; padding: 12px; background: rgba(0,229,160,0.06); border: 1px solid rgba(0,229,160,0.15); border-radius: 8px; font-size: 10px; }
+  .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .status-label { color: var(--accent); font-weight: 500; }
+  .status-info { color: var(--muted); margin-top: 4px; font-size: 9px; }
+
+  .main { margin-left: 220px; min-height: 100vh; position: relative; z-index: 1; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 20px 32px; border-bottom: 1px solid var(--border); background: rgba(10,12,16,0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 50; }
+  .page-title { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .topbar-right { display: flex; align-items: center; gap: 16px; }
+  .time-display { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; }
+
+  .page { display: none; padding: 32px; }
+  .page.active { display: block; }
+
+  /* RECOGNITION */
+  .recognition-grid { display: grid; grid-template-columns: 1fr 340px; gap: 24px; max-width: 1100px; }
+  .door-status-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; text-align: center; position: relative; overflow: hidden; transition: all 0.5s; }
+  .door-status-card.granted { border-color: rgba(0,229,160,0.4); box-shadow: 0 0 60px rgba(0,229,160,0.1); }
+  .door-status-card.denied { border-color: rgba(255,59,92,0.4); box-shadow: 0 0 60px rgba(255,59,92,0.1); }
+  .door-icon { font-size: 80px; margin-bottom: 24px; transition: all 0.5s; }
+  .door-status-text { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .door-status-text.granted { color: var(--accent); }
+  .door-status-text.denied { color: var(--danger); }
+  .door-status-text.idle { color: var(--muted); }
+  .door-person-name { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+  .scan-btn { padding: 14px 40px; background: var(--accent); color: #000; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; cursor: pointer; transition: all 0.2s; text-transform: uppercase; }
+  .scan-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,229,160,0.3); }
+  .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .scan-btn.scanning { background: var(--warn); animation: scanpulse 0.8s infinite; }
+  @keyframes scanpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+  .stats-panel { display: flex; flex-direction: column; gap: 16px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .stat-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; }
+  .stat-value.green { color: var(--accent); }
+  .stat-value.red { color: var(--danger); }
+  .stat-value.blue { color: var(--accent2); }
+  .recent-log { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; flex: 1; }
+  .recent-log h3 { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 12px; }
+  .log-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 11px; animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+  .log-item:last-child { border-bottom: none; }
+  .log-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .log-dot.granted { background: var(--accent); }
+  .log-dot.denied { background: var(--danger); }
+  .log-name { flex: 1; color: var(--text); }
+  .log-time { color: var(--muted); font-size: 10px; }
+  .scan-ring { position: absolute; width: 120px; height: 120px; border-radius: 50%; border: 1px solid var(--accent); opacity: 0; animation: none; }
+  .door-status-card.scanning .scan-ring { animation: ringPulse 1.5s ease-out infinite; }
+  @keyframes ringPulse { 0% { transform: scale(0.5); opacity: 0.6; } 100% { transform: scale(2); opacity: 0; } }
+
+  /* ENROLLMENT */
+  .enrollment-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; }
+  .enroll-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 28px; }
+  .enroll-card h2 { font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 800; margin-bottom: 20px; letter-spacing: -0.01em; }
+  .camera-preview { width: 100%; aspect-ratio: 4/3; background: #0a0c10; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; position: relative; margin-bottom: 16px; }
+  #enroll-stream { width: 100%; height: 100%; object-fit: cover; }
+  .camera-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .face-guide { width: 140px; height: 180px; border: 2px dashed rgba(0,229,160,0.4); border-radius: 50%; position: relative; }
+  .face-guide::before, .face-guide::after { content: ''; position: absolute; width: 16px; height: 16px; border-color: var(--accent); border-style: solid; }
+  .face-guide::before { top: -2px; left: -2px; border-width: 2px 0 0 2px; border-radius: 2px 0 0 0; }
+  .face-guide::after { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; border-radius: 0 0 2px 0; }
+  .capture-preview { width: 100%; aspect-ratio: 4/3; background: #0a0c10; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+  #captured-img { width: 100%; height: 100%; object-fit: cover; display: none; border-radius: 10px; }
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; display: block; }
+  .form-input { width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; }
+  .form-input:focus { border-color: var(--accent); }
+  .form-select { width: 100%; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 13px; outline: none; transition: border-color 0.2s; cursor: pointer; }
+  .form-select:focus { border-color: var(--accent); }
+  .btn-row { display: flex; gap: 10px; }
+  .btn { flex: 1; padding: 12px; border: none; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.05em; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { box-shadow: 0 4px 16px rgba(0,229,160,0.3); }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: #2a2e3a; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .alert { padding: 12px 16px; border-radius: 8px; font-size: 12px; margin-top: 12px; display: none; }
+  .alert.success { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.3); color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  .alert.error { background: rgba(255,59,92,0.1); border: 1px solid rgba(255,59,92,0.3); color: var(--danger); display: flex; align-items: center; gap: 8px; }
+  #expiry-group { display: none; }
+
+  /* USER TYPE TOGGLE */
+  .type-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+  .type-btn { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; }
+  .type-btn.active-perm { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.08); }
+  .type-btn.active-guest { border-color: var(--warn); color: var(--warn); background: rgba(255,184,0,0.08); }
+
+  /* LOGS */
+  .logs-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .filter-row { display: flex; gap: 10px; }
+  .filter-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 11px; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.06em; }
+  .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.08); }
+  .filter-btn.active-denied { border-color: var(--danger); color: var(--danger); background: rgba(255,59,92,0.08); }
+  .logs-table-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); }
+  th { padding: 14px 20px; text-align: left; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }
+  td { padding: 14px 20px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+  .badge.granted { background: rgba(0,229,160,0.12); color: var(--accent); border: 1px solid rgba(0,229,160,0.2); }
+  .badge.denied { background: rgba(255,59,92,0.12); color: var(--danger); border: 1px solid rgba(255,59,92,0.2); }
+
+  /* ADMIN */
+  .users-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .user-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; text-align: center; transition: all 0.2s; }
+  .user-card:hover { border-color: rgba(0,229,160,0.2); transform: translateY(-2px); }
+  .user-avatar { width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, var(--accent2), var(--accent)); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin: 0 auto 12px; color: #fff; }
+  .user-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .user-id { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .user-type-badge { display: inline-block; padding: 2px 8px; border-radius: 100px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 12px; }
+  .user-type-badge.permanent { background: rgba(0,229,160,0.1); color: var(--accent); border: 1px solid rgba(0,229,160,0.2); }
+  .user-type-badge.guest { background: rgba(255,184,0,0.1); color: var(--warn); border: 1px solid rgba(255,184,0,0.2); }
+  .user-expiry { font-size: 10px; color: var(--muted); margin-bottom: 10px; }
+  .user-actions { display: flex; gap: 8px; justify-content: center; }
+  .icon-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.2s; }
+  .icon-btn:hover { color: var(--danger); border-color: var(--danger); background: rgba(255,59,92,0.08); }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); font-size: 12px; }
+  .empty-state .emoji { font-size: 36px; margin-bottom: 12px; }
+  .section-title { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; margin-bottom: 20px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(0,229,160,0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-icon">🔬</div>
+    <h1>Lab Access AI</h1>
+    <span>Access Control System</span>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showPage('recognition')"><span class="icon">🚪</span> Recognition</div>
+    <div class="nav-item" onclick="showPage('enrollment')"><span class="icon">➕</span> Enroll User</div>
+    <div class="nav-item" onclick="showPage('logs')"><span class="icon">📋</span> Access Logs</div>
+    <div class="nav-item" onclick="showPage('admin')"><span class="icon">👥</span> Admin</div>
+  </nav>
+  <div class="system-status">
+    <div><span class="status-dot"></span><span class="status-label">SYSTEM ONLINE</span></div>
+    <div class="status-info" id="backend-status">Connecting...</div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Lab Recognition</div>
+    <div class="topbar-right">
+      <div class="time-display" id="clock"></div>
+    </div>
+  </div>
+
+  <!-- RECOGNITION PAGE -->
+  <div class="page active" id="page-recognition">
+    <div class="recognition-grid">
+      <div class="door-status-card" id="door-card">
+        <div class="scan-ring"></div>
+        <div class="door-icon" id="door-icon">🚪</div>
+        <div class="door-status-text idle" id="door-status-text">STANDBY</div>
+        <div class="door-person-name" id="door-person-name">Press scan to recognize face</div>
+        <button class="scan-btn" id="scan-btn" onclick="triggerRecognition()">⚡ Scan Face</button>
+      </div>
+      <div class="stats-panel">
+        <div class="stat-card">
+          <div class="stat-label">Access Granted Today</div>
+          <div class="stat-value green" id="stat-granted">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Access Denied Today</div>
+          <div class="stat-value red" id="stat-denied">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Enrolled Users</div>
+          <div class="stat-value blue" id="stat-users">—</div>
+        </div>
+        <div class="recent-log">
+          <h3>Recent Activity</h3>
+          <div id="recent-log-list"><div style="color:var(--muted);font-size:11px;">No activity yet</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ENROLLMENT PAGE -->
+  <div class="page" id="page-enrollment">
+    <div class="enrollment-layout">
+      <div class="enroll-card">
+        <h2>📷 Capture Photo</h2>
+        <div class="camera-preview">
+          <img id="enroll-stream" src="" alt="Camera feed" />
+          <div class="camera-overlay"><div class="face-guide"></div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="capturePhoto()">📸 Capture</button>
+          <button class="btn btn-secondary" onclick="retakePhoto()">🔄 Retake</button>
+        </div>
+      </div>
+
+      <div class="enroll-card">
+        <h2>📝 User Details</h2>
+        <div class="capture-preview" id="capture-preview">
+          <img id="captured-img" alt="Captured face">
+          <span id="preview-placeholder">📷 Capture photo first</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input class="form-input" id="enroll-name" type="text" placeholder="e.g. Ravi Kumar" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Student / Employee ID *</label>
+          <input class="form-input" id="enroll-id" type="text" placeholder="e.g. CS2024001" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">User Type *</label>
+          <div class="type-toggle">
+            <div class="type-btn active-perm" id="type-perm" onclick="selectType('permanent')">🔒 Permanent</div>
+            <div class="type-btn" id="type-guest" onclick="selectType('guest')">⏳ Guest</div>
+          </div>
+        </div>
+
+        <div class="form-group" id="expiry-group">
+          <label class="form-label">Access Expiry Date & Time *</label>
+          <input class="form-input" id="enroll-expiry" type="datetime-local" />
+        </div>
+
+        <button class="btn btn-primary" id="enroll-btn" onclick="enrollUser()" style="width:100%;margin-top:4px;" disabled>
+          ✅ Enroll User
+        </button>
+
+        <div class="alert success" id="enroll-success"></div>
+        <div class="alert error" id="enroll-error">❌ <span id="enroll-error-msg"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOGS PAGE -->
+  <div class="page" id="page-logs">
+    <div class="logs-header">
+      <p class="section-title">Access Logs</p>
+      <div class="filter-row">
+        <button class="filter-btn active" id="filter-all" onclick="filterLogs('all')">All</button>
+        <button class="filter-btn" id="filter-granted" onclick="filterLogs('granted')">✓ Granted</button>
+        <button class="filter-btn" id="filter-denied" onclick="filterLogs('denied')">✗ Denied</button>
+      </div>
+    </div>
+    <div class="logs-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Name</th><th>ID</th><th>User Type</th><th>Status</th><th>Time</th><th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="logs-tbody">
+          <tr><td colspan="7"><div class="empty-state"><div class="emoji">📋</div>No logs yet</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ADMIN PAGE -->
+  <div class="page" id="page-admin">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <p class="section-title" style="margin-bottom:0">Enrolled Users</p>
+      <button class="btn btn-primary" style="width:auto;padding:10px 20px;" onclick="showPage('enrollment')">+ Add New</button>
+    </div>
+    <div class="users-grid" id="users-grid">
+      <div class="empty-state" style="grid-column:1/-1"><div class="emoji">👥</div><div>No users enrolled yet</div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API = 'http://127.0.0.1:5000';
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'}) +
+    ' · ' + now.toLocaleDateString('en-IN', {day:'2-digit',month:'short',year:'numeric'});
+}
+setInterval(updateClock, 1000); updateClock();
+
+// Page navigation
+const pageTitles = { recognition:'Lab Recognition', enrollment:'Enroll New User', logs:'Access Logs', admin:'Admin Dashboard' };
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item')[['recognition','enrollment','logs','admin'].indexOf(name)].classList.add('active');
+  document.getElementById('page-title').textContent = pageTitles[name];
+  if (name === 'enrollment') startEnrollCamera();
+  else stopEnrollCamera();
+  if (name === 'logs') loadLogs();
+  if (name === 'admin') loadUsers();
+}
+
+// Backend health
+async function checkBackend() {
+  try {
+    const r = await fetch(API + '/health');
+    const d = await r.json();
+    document.getElementById('backend-status').textContent = (d.known_users || 0) + ' users loaded';
+    document.getElementById('stat-users').textContent = d.known_users || 0;
+  } catch { document.getElementById('backend-status').textContent = 'Backend offline'; }
+}
+checkBackend(); setInterval(checkBackend, 10000);
+loadTodayStats();
+
+// Load today counts from backend logs
+async function loadTodayStats() {
+  try {
+    const r = await fetch(API + '/logs');
+    const d = await r.json();
+    const logs = d.logs || d || [];
+    const today = new Date().toLocaleDateString('en-IN');
+    let g = 0, dn = 0;
+    logs.forEach(l => {
+      const logDate = new Date(l.timestamp || Date.now()).toLocaleDateString('en-IN');
+      if (logDate === today) {
+        const s = (l.status || '').toLowerCase();
+        if (s === 'authorized' || s === 'granted') g++;
+        else dn++;
+      }
+    });
+    grantedToday = g; deniedToday = dn;
+    document.getElementById('stat-granted').textContent = g;
+    document.getElementById('stat-denied').textContent = dn;
+  } catch {}
+}
+
+// Recognition
+let recentLogs = [], grantedToday = 0, deniedToday = 0;
+
+async function triggerRecognition() {
+  const btn = document.getElementById('scan-btn');
+  const card = document.getElementById('door-card');
+  const statusText = document.getElementById('door-status-text');
+  const personName = document.getElementById('door-person-name');
+  const icon = document.getElementById('door-icon');
+
+  btn.disabled = true;
+  btn.textContent = '🔍 Scanning...';
+  btn.classList.add('scanning');
+  card.className = 'door-status-card scanning';
+  statusText.className = 'door-status-text idle';
+  statusText.textContent = 'SCANNING';
+  personName.textContent = 'Analyzing face...';
+  icon.textContent = '🔍';
+
+  try {
+    const r = await fetch(API + '/recognize');
+    const d = await r.json();
+    if (d.authorized) {
+      card.className = 'door-status-card granted';
+      statusText.className = 'door-status-text granted';
+      statusText.textContent = 'ACCESS GRANTED';
+      personName.textContent = 'Welcome, ' + (d.name || 'User');
+      icon.textContent = '🔓';
+      grantedToday++;
+      document.getElementById('stat-granted').textContent = grantedToday;
+      addRecentLog(d.name || 'Unknown', 'granted');
+    } else {
+      card.className = 'door-status-card denied';
+      statusText.className = 'door-status-text denied';
+      statusText.textContent = 'ACCESS DENIED';
+      personName.textContent = d.message || 'Face not recognized';
+      icon.textContent = '🔒';
+      deniedToday++;
+      document.getElementById('stat-denied').textContent = deniedToday;
+      addRecentLog('Unknown', 'denied');
+    }
+    setTimeout(() => {
+      card.className = 'door-status-card';
+      statusText.className = 'door-status-text idle';
+      statusText.textContent = 'STANDBY';
+      personName.textContent = 'Press scan to recognize face';
+      icon.textContent = '🚪';
+    }, 4000);
+  } catch (e) {
+    card.className = 'door-status-card denied';
+    statusText.textContent = 'ERROR';
+    personName.textContent = 'Could not connect to backend';
+    icon.textContent = '⚠️';
+  }
+  btn.disabled = false;
+  btn.textContent = '⚡ Scan Face';
+  btn.classList.remove('scanning');
+}
+
+function addRecentLog(name, status) {
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'});
+  recentLogs.unshift({name, status, time});
+  if (recentLogs.length > 5) recentLogs.pop();
+  document.getElementById('recent-log-list').innerHTML = recentLogs.map(l => `
+    <div class="log-item">
+      <div class="log-dot ${l.status}"></div>
+      <div class="log-name">${l.name}</div>
+      <div class="log-time">${l.time}</div>
+    </div>`).join('');
+  // Also add to allLogs so it shows in logs page immediately
+  allLogs.unshift({name, status, time, date: now.toLocaleDateString('en-IN'), sid:'—', utype:'—'});
+}
+
+// User type selection
+let selectedType = 'permanent';
+function selectType(type) {
+  selectedType = type;
+  const permBtn = document.getElementById('type-perm');
+  const guestBtn = document.getElementById('type-guest');
+  const expiryGroup = document.getElementById('expiry-group');
+
+  if (type === 'permanent') {
+    permBtn.className = 'type-btn active-perm';
+    guestBtn.className = 'type-btn';
+    expiryGroup.style.display = 'none';
+  } else {
+    permBtn.className = 'type-btn';
+    guestBtn.className = 'type-btn active-guest';
+    expiryGroup.style.display = 'block';
+    // Set default expiry to 24 hours from now
+    const d = new Date(Date.now() + 24*60*60*1000);
+    document.getElementById('enroll-expiry').value = d.toISOString().slice(0,16);
+  }
+}
+
+// Enrollment camera
+let capturedBlob = null;
+function startEnrollCamera() {
+  document.getElementById('enroll-stream').src = API + '/video_feed?t=' + Date.now();
+}
+function stopEnrollCamera() {
+  document.getElementById('enroll-stream').src = '';
+}
+async function capturePhoto() {
+  try {
+    const r = await fetch(API + '/capture_frame');
+    if (!r.ok) throw new Error();
+    capturedBlob = await r.blob();
+    const url = URL.createObjectURL(capturedBlob);
+    const img = document.getElementById('captured-img');
+    img.src = url;
+    img.style.display = 'block';
+    document.getElementById('preview-placeholder').style.display = 'none';
+    document.getElementById('enroll-btn').disabled = false;
+  } catch { showEnrollError('Could not capture frame. Is Flask running?'); }
+}
+function retakePhoto() {
+  capturedBlob = null;
+  document.getElementById('captured-img').style.display = 'none';
+  document.getElementById('preview-placeholder').style.display = 'block';
+  document.getElementById('enroll-btn').disabled = true;
+  hideAlerts();
+}
+function hideAlerts() {
+  document.getElementById('enroll-success').style.display = 'none';
+  document.getElementById('enroll-error').style.display = 'none';
+}
+function showEnrollError(msg) {
+  const el = document.getElementById('enroll-error');
+  document.getElementById('enroll-error-msg').textContent = msg;
+  el.style.display = 'flex';
+}
+
+async function enrollUser() {
+  const name = document.getElementById('enroll-name').value.trim();
+  const sid = document.getElementById('enroll-id').value.trim();
+  const expiry = document.getElementById('enroll-expiry').value;
+  hideAlerts();
+
+  if (!name || !sid) { showEnrollError('Please fill in all fields.'); return; }
+  if (!capturedBlob) { showEnrollError('Please capture a photo first.'); return; }
+  if (selectedType === 'guest' && !expiry) { showEnrollError('Please set an expiry date for guest access.'); return; }
+
+  const btn = document.getElementById('enroll-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enrolling...';
+
+  try {
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('student_id', sid);
+    formData.append('user_type', selectedType);
+    if (selectedType === 'guest' && expiry) {
+      formData.append('expiry_datetime', new Date(expiry).toISOString());
+    }
+    formData.append('image', capturedBlob, 'face.jpg');
+
+    const r = await fetch(API + '/add-user', {method:'POST', body: formData});
+    const d = await r.json();
+
+    if (r.ok) {
+      const typeLabel = selectedType === 'permanent' ? 'Permanent' : 'Guest';
+      const successEl = document.getElementById('enroll-success');
+      successEl.style.display = 'flex';
+      successEl.textContent = '✅ ' + name + ' (' + sid + ') enrolled as ' + typeLabel + '!';
+      setTimeout(() => {
+        document.getElementById('enroll-name').value = '';
+        document.getElementById('enroll-id').value = '';
+        selectType('permanent');
+        retakePhoto();
+        hideAlerts();
+        checkBackend();
+      }, 2500);
+    } else {
+      showEnrollError(d.error || d.message || 'Enrollment failed.');
+    }
+  } catch { showEnrollError('Cannot connect to backend.'); }
+
+  btn.disabled = false;
+  btn.textContent = '✅ Enroll User';
+}
+
+// Logs
+let allLogs = [], currentFilter = 'all';
+
+async function loadLogs() {
+  try {
+    const r = await fetch(API + '/logs');
+    const d = await r.json();
+    const raw = d.logs || d || [];
+    // Merge with in-memory logs (avoid duplicates by checking length)
+    const fetched = raw.map(l => ({
+      name: l.name || 'Unknown',
+      status: (l.status || '').toLowerCase() === 'authorized' ? 'granted' : 'denied',
+      time: new Date(l.timestamp || Date.now()).toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}),
+      date: new Date(l.timestamp || Date.now()).toLocaleDateString('en-IN'),
+      sid: l.student_id || '—',
+      utype: l.user_type || '—'
+    }));
+    if (fetched.length > 0) allLogs = fetched;
+  } catch {}
+  renderLogs();
+}
+
+function filterLogs(filter) {
+  currentFilter = filter;
+  // Update button styles
+  document.getElementById('filter-all').className = 'filter-btn' + (filter === 'all' ? ' active' : '');
+  document.getElementById('filter-granted').className = 'filter-btn' + (filter === 'granted' ? ' active' : '');
+  document.getElementById('filter-denied').className = 'filter-btn' + (filter === 'denied' ? ' active-denied' : '');
+  renderLogs();
+}
+
+function renderLogs() {
+  const tbody = document.getElementById('logs-tbody');
+  const filtered = currentFilter === 'all' ? allLogs : allLogs.filter(l => l.status === currentFilter);
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="emoji">📋</div>No logs found</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map((l, i) => `
+    <tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td>${l.name}</td>
+      <td style="color:var(--muted)">${l.sid}</td>
+      <td style="color:var(--muted);font-size:11px;">${l.utype}</td>
+      <td><span class="badge ${l.status}">${l.status === 'granted' ? '✓ Granted' : '✗ Denied'}</span></td>
+      <td>${l.time}</td>
+      <td style="color:var(--muted)">${l.date}</td>
+    </tr>`).join('');
+}
+
+// Admin
+async function loadUsers() {
+  try {
+    const r = await fetch(API + '/users');
+    const d = await r.json();
+    const users = d.users || d || [];
+    const grid = document.getElementById('users-grid');
+    if (users.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="emoji">👥</div><div>No users enrolled yet</div></div>';
+      return;
+    }
+    grid.innerHTML = users.map(u => {
+      const isGuest = (u.user_type || '').toLowerCase() === 'guest';
+      const expiryStr = isGuest && u.expiry_datetime
+        ? '<div class="user-expiry">⏳ Expires: ' + new Date(u.expiry_datetime).toLocaleString('en-IN') + '</div>'
+        : '';
+      return `
+        <div class="user-card">
+          <div class="user-avatar">${(u.name||'U')[0].toUpperCase()}</div>
+          <div class="user-name">${u.name}</div>
+          <div class="user-id">${u.student_id || '—'}</div>
+          <div class="user-type-badge ${isGuest ? 'guest' : 'permanent'}">${isGuest ? '⏳ Guest' : '🔒 Permanent'}</div>
+          ${expiryStr}
+          <div class="user-actions">
+            <button class="icon-btn" title="Delete" onclick="deleteUser(${u.id}, this)">🗑️</button>
+          </div>
+        </div>`;
+    }).join('');
+  } catch {
+    document.getElementById('users-grid').innerHTML =
+      '<div class="empty-state" style="grid-column:1/-1"><div class="emoji">⚠️</div><div>Could not load users</div></div>';
+  }
+}
+
+async function deleteUser(id, btn) {
+  if (!confirm('Delete this user?')) return;
+  try {
+    await fetch(API + '/users/' + id, {method:'DELETE'});
+    loadUsers(); checkBackend();
+  } catch { alert('Failed to delete user.'); }
+}
+</script>
+</body>
+</html>
